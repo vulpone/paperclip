@@ -75,7 +75,7 @@ ENV NODE_ENV=production \
   PAPERCLIP_DEPLOYMENT_EXPOSURE=private \
   OPENCODE_ALLOW_ALL_MODELS=true
 
-VOLUME ["/paperclip"]
+# VOLUME ["/paperclip"] -- removed for Railway deployment (Railway uses managed volumes via dashboard)
 EXPOSE 3100
 
 ENTRYPOINT ["docker-entrypoint.sh"]
