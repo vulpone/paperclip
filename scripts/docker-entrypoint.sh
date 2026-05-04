@@ -93,4 +93,22 @@ EOF
 fi
 # ──────────────────────────────────────────────────────────────────────
 
+# ──────────────────────────────────────────────────────────────────────
+# Claude Code subscription auth — inject credentials from env var
+# ──────────────────────────────────────────────────────────────────────
+# When CLAUDE_CREDENTIALS_JSON is set (verbatim contents of a logged-in
+# Mac's Claude credentials), write it into /paperclip/.claude/.credentials.json
+# so Claude Code authenticates via Pro/Max subscription instead of API key.
+# Re-runs on every container start so the file stays in sync with the env var.
+# ──────────────────────────────────────────────────────────────────────
+
+if [ -n "$CLAUDE_CREDENTIALS_JSON" ]; then
+    echo "[bootstrap] Injecting Claude credentials from CLAUDE_CREDENTIALS_JSON"
+    mkdir -p /paperclip/.claude
+    printf '%s' "$CLAUDE_CREDENTIALS_JSON" > /paperclip/.claude/.credentials.json
+    chmod 600 /paperclip/.claude/.credentials.json
+    chown -R node:node /paperclip/.claude
+fi
+# ──────────────────────────────────────────────────────────────────────
+
 exec gosu node "$@"
