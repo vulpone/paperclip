@@ -59,7 +59,8 @@ RUN npm install --global --omit=dev @anthropic-ai/claude-code@latest @openai/cod
   && chown node:node /paperclip
 
 COPY scripts/docker-entrypoint.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+COPY scripts/refresh-claude-creds.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh /usr/local/bin/refresh-claude-creds.sh
 
 ENV NODE_ENV=production \
   HOME=/paperclip \
