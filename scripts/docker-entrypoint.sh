@@ -110,24 +110,4 @@ if [ -n "$CLAUDE_CREDENTIALS_JSON" ]; then
     chown -R node:node /paperclip/.claude
 fi
 
-# ──────────────────────────────────────────────────────────────────────
-# Berlin-Collective Claude OAuth refresh daemon (2026-05-08)
-# ──────────────────────────────────────────────────────────────────────
-# The injected credentials snapshot expires after ~8h. To keep the
-# container authenticated indefinitely without redeploys, we run a
-# background daemon that periodically calls Anthropic's OAuth refresh
-# endpoint and rewrites the credentials file in-place.
-# Daemon source: /usr/local/bin/refresh-claude-creds.sh (baked in via Dockerfile).
-# ──────────────────────────────────────────────────────────────────────
-
-if [ -f /paperclip/.claude/.credentials.json ] && [ -x /usr/local/bin/refresh-claude-creds.sh ]; then
-    echo "[bootstrap] Starting Claude OAuth refresh daemon in background"
-    # Run as the node user so writes preserve correct ownership.
-    # setsid + & + disown detaches the daemon so it survives the exec below.
-    setsid gosu node /usr/local/bin/refresh-claude-creds.sh \
-        > /paperclip/.claude/refresh.log 2>&1 < /dev/null &
-    disown 2>/dev/null || true
-fi
-# ──────────────────────────────────────────────────────────────────────
-
 exec gosu node "$@"
