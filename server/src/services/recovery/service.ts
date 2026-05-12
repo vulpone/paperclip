@@ -629,6 +629,37 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
     return row ?? null;
   }
 
+  // Berlin-Collective patch (2026-05-12): orphan-run-loop fix.
+  // Returns ANY eval issue ever created for this run (incl. done/cancelled).
+  // Used as a cooldown gate: once an issue has been created for a stranded run,
+  // do NOT create another one — even if the previous one was closed as "false
+  // positive" by an agent. Without this gate, agents that auto-close stranded-run
+  // detector issues cause an infinite create→close→create loop because the
+  // partial-unique index `issues_active_stale_run_evaluation_uq` releases on close.
+  async function findAnyStaleRunEvaluation(companyId: string, runId: string) {
+    const [row] = await db
+      .select({
+        id: issues.id,
+        identifier: issues.identifier,
+        status: issues.status,
+        priority: issues.priority,
+        assigneeAgentId: issues.assigneeAgentId,
+        updatedAt: issues.updatedAt,
+      })
+      .from(issues)
+      .where(
+        and(
+          eq(issues.companyId, companyId),
+          eq(issues.originKind, STALE_ACTIVE_RUN_EVALUATION_ORIGIN_KIND),
+          eq(issues.originId, runId),
+          isNull(issues.hiddenAt),
+        ),
+      )
+      .orderBy(desc(issues.createdAt))
+      .limit(1);
+    return row ?? null;
+  }
+
   async function buildRunOutputSilence(
     run: Pick<
       typeof heartbeatRuns.$inferSelect,
@@ -943,8 +974,16 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
       now: input.now,
     });
     const level = (evidence.silenceAgeMs ?? 0) >= ACTIVE_RUN_OUTPUT_CRITICAL_THRESHOLD_MS ? "critical" : "suspicious";
-    const existing = await findOpenStaleRunEvaluation(input.run.companyId, input.run.id);
+    // Berlin-Collective patch (2026-05-12): use any-existing (incl. closed) to
+    // break the orphan-run create→close→create loop. See findAnyStaleRunEvaluation.
+    const existing = await findAnyStaleRunEvaluation(input.run.companyId, input.run.id);
     if (existing) {
+      // If the existing eval was closed (done/cancelled) by an agent's false-positive
+      // disposition, do NOT re-open and do NOT create a new one. Just log once and
+      // bail. The underlying stranded run needs operator intervention via admin UI.
+      if (existing.status === "done" || existing.status === "cancelled") {
+        return { kind: "existing" as const, evaluationIssueId: existing.id };
+      }
       if (level === "critical" && existing.priority !== "high") {
         await issuesSvc.update(existing.id, {
           priority: "high",
